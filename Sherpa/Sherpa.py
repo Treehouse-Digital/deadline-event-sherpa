@@ -11,6 +11,7 @@ from math import ceil
 import platform
 import sys
 import time
+import traceback
 
 eventPath = RepositoryUtils.GetEventPluginDirectory("Sherpa")
 
@@ -64,9 +65,10 @@ class SherpaEventListener(DeadlineEventListener):
         del self.OnIdleShutdownCallback
         del self.OnHouseCleaningCallback
 
-    def OnSlaveStarted(self, workerName):
+    def fetch_data(self):  # type: () -> dict | None
+        """Fetches the Sherpa data dict, if any, from the JSON file for current platform."""
         self.GetLogLevel()
-
+        data = None
         dataFile = None
 
         if platform.system() == "Linux":
@@ -87,49 +89,55 @@ class SherpaEventListener(DeadlineEventListener):
                     self.LogInfo("Reading Sherpa data file: {0}".format(dataFile))
 
                 data = json.load(json_file)
-
-                workerSettings = RepositoryUtils.GetSlaveSettings(workerName, True)
-                key = self.GetConfigEntryWithDefault("SherpaIdentifierKey", "Sherpa_ID")
-                value = workerSettings.GetSlaveExtraInfoKeyValue(key)
-
-                if not value or value is None:
-                    id = data['id']
-
-                    if self.verLog:
-                        self.LogInfo("Saving Sherpa ID as extra info key/value pair: {0} (key) + {1} (value)".format(key, id))
-
-                    dict = workerSettings.SlaveExtraInfoDictionary
-
-                    dict.Add(key, id)
-
-                    workerSettings.SlaveExtraInfoDictionary = dict
-                    RepositoryUtils.SaveSlaveSettings(workerSettings)
-
-                    # deleting a worker and letting it check in again allows a name change to be picked up
-                    # we call out to Sherpa to get the name, not the data file
-                    # the latter only gets stamped once and for that reason does not contain the resource name
-                    self.InitializeSherpaClient()
-
-                    if self.verLog:
-                        self.LogInfo("Getting Sherpa resource ({0}) name".format(id))
-
-                    name = GetResourceName(
-                        self.sherpaClient,
-                        id
-                    )
-
-                    if name is not None:
-                        if self.verLog:
-                            self.LogInfo("Saving Sherpa resource ({0}) name as worker description: {1}".format(id, name))
-
-                        workerSettings.SlaveDescription = name
-                        RepositoryUtils.SaveSlaveSettings(workerSettings)
-
-                if self.verLog:
-                    self.LogInfo("id: {0}, @type: {1}".format(data['id'], data['@type']))
         except IOError:
             if self.verLog:
                 self.LogWarning("Sherpa data file ({0}) could not be read".format(dataFile))
+                if self.debugLog:
+                    for line in traceback.format_exc().splitlines():
+                        self.LogWarning(line)
+        return data
+
+    def OnSlaveStarted(self, workerName):
+        self.GetLogLevel()
+        data = self.fetch_data()
+        if isinstance(data, dict):
+            workerSettings = RepositoryUtils.GetSlaveSettings(workerName, True)
+            key = self.GetConfigEntryWithDefault("SherpaIdentifierKey", "Sherpa_ID")
+            value = workerSettings.GetSlaveExtraInfoKeyValue(key)
+
+            if not value or value is None:
+                id = data['id']
+
+                if self.verLog:
+                    self.LogInfo("Saving Sherpa ID as extra info key/value pair: {0} (key) + {1} (value)".format(key, id))
+
+                extra_info_dict = workerSettings.SlaveExtraInfoDictionary
+                extra_info_dict.Add(key, id)
+                workerSettings.SlaveExtraInfoDictionary = extra_info_dict
+                RepositoryUtils.SaveSlaveSettings(workerSettings)
+
+                # deleting a worker and letting it check in again allows a name change to be picked up
+                # we call out to Sherpa to get the name, not the data file
+                # the latter only gets stamped once and for that reason does not contain the resource name
+                self.InitializeSherpaClient()
+
+                if self.verLog:
+                    self.LogInfo("Getting Sherpa resource ({0}) name".format(id))
+
+                name = GetResourceName(
+                    self.sherpaClient,
+                    id
+                )
+
+                if name is not None:
+                    if self.verLog:
+                        self.LogInfo("Saving Sherpa resource ({0}) name as worker description: {1}".format(id, name))
+
+                    workerSettings.SlaveDescription = name
+                    RepositoryUtils.SaveSlaveSettings(workerSettings)
+
+            if self.verLog:
+                self.LogInfo("id: {0}, @type: {1}".format(data['id'], data['@type']))
 
     def OnMachineStartup(self, groupName, workerNames, MachineStartupOptions):
         self.GetLogLevel()
