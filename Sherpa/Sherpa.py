@@ -65,41 +65,10 @@ class SherpaEventListener(DeadlineEventListener):
         del self.OnIdleShutdownCallback
         del self.OnHouseCleaningCallback
 
-    def fetch_data(self):  # type: () -> dict | None
-        """Fetches the Sherpa data dict, if any, from the JSON file for current platform."""
-        self.GetLogLevel()
-        data = None
-        dataFile = None
-
-        if platform.system() == "Linux":
-            dataFile = self.GetConfigEntryWithDefault("DataFileLinux", "")
-
-        if platform.system() == "Windows":
-            dataFile = self.GetConfigEntryWithDefault("DataFileWindows", "")
-
-        if not dataFile or dataFile is None:
-            self.LogWarning("Please enter the desired data file for this OS")
-        else:
-            if self.verLog:
-                self.LogInfo("Using Sherpa data file: {0}".format(dataFile))
-
-        try:
-            with open(dataFile) as json_file:
-                if self.verLog:
-                    self.LogInfo("Reading Sherpa data file: {0}".format(dataFile))
-
-                data = json.load(json_file)
-        except IOError:
-            if self.verLog:
-                self.LogWarning("Sherpa data file ({0}) could not be read".format(dataFile))
-                if self.debugLog:
-                    for line in traceback.format_exc().splitlines():
-                        self.LogWarning(line)
-        return data
 
     def OnSlaveStarted(self, workerName):
         self.GetLogLevel()
-        data = self.fetch_data()
+        data = self.FetchData()
         if isinstance(data, dict):
             workerSettings = RepositoryUtils.GetSlaveSettings(workerName, True)
             key = self.GetConfigEntryWithDefault("SherpaIdentifierKey", "Sherpa_ID")
@@ -858,6 +827,38 @@ class SherpaEventListener(DeadlineEventListener):
 
             workerSettings.SlaveExtraInfoDictionary = dict
             RepositoryUtils.SaveSlaveSettings(workerSettings)
+
+    def FetchData(self):  # type: () -> dict | None
+        """Fetches the Sherpa data dict, if any, from the JSON file for current platform."""
+        self.GetLogLevel()
+        data = None
+        dataFile = None
+
+        if platform.system() == "Linux":
+            dataFile = self.GetConfigEntryWithDefault("DataFileLinux", "")
+
+        if platform.system() == "Windows":
+            dataFile = self.GetConfigEntryWithDefault("DataFileWindows", "")
+
+        if not dataFile or dataFile is None:
+            self.LogWarning("Please enter the desired data file for this OS")
+        else:
+            if self.verLog:
+                self.LogInfo("Using Sherpa data file: {0}".format(dataFile))
+
+        try:
+            with open(dataFile) as json_file:
+                if self.verLog:
+                    self.LogInfo("Reading Sherpa data file: {0}".format(dataFile))
+
+                data = json.load(json_file)
+        except IOError:
+            if self.verLog:
+                self.LogWarning("Sherpa data file ({0}) could not be read".format(dataFile))
+                if self.debugLog:
+                    for line in traceback.format_exc().splitlines():
+                        self.LogWarning(line)
+        return data
 
     def InitializeSherpaClient(self):
         key = self.GetConfigEntryWithDefault("APIKey", "")
